@@ -224,13 +224,7 @@ def hessian_abscal_wrapper(abscal_parameters, caldata_obj):
         Shape (3, 3,).
     """
 
-    hess = np.zeros(
-        (
-            3,
-            3,
-        ),
-        dtype=float,
-    )
+    hess = np.zeros((3, 3), dtype=float)
     (
         hess_amp_amp,
         hess_amp_phasex,
@@ -279,8 +273,87 @@ def cost_dw_abscal_wrapper(abscal_parameters_flattened, caldata_obj):
         caldata_obj.data_visibilities[:, :, :, 0],
         caldata_obj.uv_array,
         caldata_obj.visibility_weights[:, :, :, 0],
+        caldata_obj.dwcal_inv_covariance[:, :, :, :, 0],
     )
     return cost
+
+
+def jacobian_dw_abscal_wrapper(abscal_parameters_flattened, caldata_obj):
+    """
+    Wrapper for function jacobian_dw_abscal.
+
+    Parameters
+    ----------
+    abscal_parameters_flattened : array of float
+        Abscal parameters, flattened across the frequency axis. Shape (3 * Nfreqs,).
+    caldata_obj : CalData
+
+    Returns
+    -------
+    jac_flattened : array of float
+        Flattened array of derivatives of the cost function with respect to the abscal
+        parameters. Shape (3 * Nfreqs,).
+    """
+
+    abscal_parameters = np.reshape(abscal_parameters_flattened, (3, caldata_obj.Nfreqs))
+    amp_jac, phase_jac = cost_function_calculations.jacobian_dw_abscal(
+        abscal_parameters[0, :],
+        abscal_parameters[1:, :],
+        caldata_obj.model_visibilities[:, :, :, 0],
+        caldata_obj.data_visibilities[:, :, :, 0],
+        caldata_obj.uv_array,
+        caldata_obj.visibility_weights[:, :, :, 0],
+        caldata_obj.dwcal_inv_covariance[:, :, :, :, 0],
+    )
+    jac_array = np.zeros((3, caldata_obj.Nfreqs), dtype=float)
+    jac_array[0, :] = amp_jac
+    jac_array[1:, :] = phase_jac
+    return jac_array.flatten()
+
+
+def hessian_dw_abscal_wrapper(abscal_parameters_flattened, caldata_obj):
+    """
+    Wrapper for function hess_dw_abscal.
+
+    Parameters
+    ----------
+    abscal_parameters_flattened : array of float
+        Abscal parameters, flattened across the frequency axis. Shape (3 * Nfreqs,).
+    caldata_obj : CalData
+
+    Returns
+    -------
+    hess : array of float
+        Array of second derivatives of the cost function with respect to the abscal
+        parameters. Shape (3 * Nfreqs, 3 * Nfreqs,).
+    """
+
+    abscal_parameters = np.reshape(abscal_parameters_flattened, (3, caldata_obj.Nfreqs))
+    (
+        hess_amp_amp,
+        hess_amp_phasex,
+        hess_amp_phasey,
+        hess_phasex_phasex,
+        hess_phasey_phasey,
+        hess_phasex_phasey,
+    ) = cost_function_calculations.hess_dw_abscal(
+        abscal_parameters[0, :],
+        abscal_parameters[1:, :],
+        caldata_obj.model_visibilities[:, :, :, 0],
+        caldata_obj.data_visibilities[:, :, :, 0],
+        caldata_obj.uv_array,
+        caldata_obj.visibility_weights[:, :, :, 0],
+        caldata_obj.dwcal_inv_covariance[:, :, :, :, 0],
+    )
+    hess = np.zeros((3, caldata_obj.Nfreqs, 3, caldata_obj.Nfreqs), dtype=float)
+    hess[0, :, 0, :] = hess_amp_amp
+    hess[0, :, 1, :] = hess[1, :, 0, :] = hess_amp_phasex
+    hess[0, :, 2, :] = hess[2, :, 0, :] = hess_amp_phasey
+    hess[1, :, 1, :] = hess_phasex_phasex
+    hess[2, :, 2, :] = hess_phasey_phasey
+    hess[1, :, 2, :] = hess[2, :, 1, :] = hess_phasex_phasey
+    hess = np.reshape(hess, (3 * caldata_obj.Nfreqs, 3 * caldata_obj.Nfreqs))
+    return hess
 
 
 def run_calibration_optimization_per_pol_single_freq(
@@ -369,19 +442,6 @@ def run_calibration_optimization_per_pol_single_freq(
                 )
                 gains_fit *= np.cos(avg_angle) - 1j * np.sin(avg_angle)
                 caldata_per_pol.gains = gains_fit[:, np.newaxis, np.newaxis]
-
-                """
-                if caldata_per_pol.Nants == caldata_obj.Nants:
-                    caldata_obj.gains[:, :, feed_pol_ind] = caldata_per_pol.gains[:, :, 0]
-                else:
-                    ant_inds = np.array(
-                        [
-                            np.where(caldata_obj.antenna_names == ant_name)[0]
-                            for ant_name in caldata_per_pol.antenna_names
-                        ]
-                    )
-                    caldata_obj.gains[ant_inds, :, feed_pol_ind] = caldata_per_pol.gains
-                """
                 caldata_obj.gains[:, :, feed_pol_ind] = caldata_per_pol.gains[:, :, 0]
 
         # Constrain crosspol phase
@@ -513,9 +573,9 @@ def run_dw_abscal_optimization(
             cost_dw_abscal_wrapper,
             abscal_params_flattened,
             args=(caldata_per_pol),
-            method="Powell",
-            # jac=jacobian_dw_abscal_wrapper,
-            # hess=hessian_dw_abscal_wrapper,
+            method="Newton-CG",
+            jac=jacobian_dw_abscal_wrapper,
+            hess=hessian_dw_abscal_wrapper,
             options={"disp": verbose, "xtol": xtol, "maxiter": maxiter},
         )
         caldata_obj.abscal_params[:, :, feed_pol_ind] = np.reshape(
