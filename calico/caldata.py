@@ -215,7 +215,10 @@ class CalData:
             if uvcal.gain_convention != "multiply":
                 use_gains = 1 / use_gains
 
-        self.gains = use_gains[cal_ant_inds, :]
+        self.gains = use_gains[cal_ant_inds, :, :]
+
+        if self.n_directions > 1:
+            self.gains = np.repeat(self.gains[:, :, :, np.newaxis], self.n_directions, axis=3)
 
     def initialize_gains(
         self,
@@ -836,6 +839,9 @@ class CalData:
         )
         if np.max(flag_array):  # Apply flagging
             self.visibility_weights[np.where(flag_array)] = 0.0
+        self.visibility_weights /= np.sum(
+            self.visibility_weights
+        )  # Normalize by the total weight to keep cost function values reasonable
 
         # Initialize gains
         self.gains_multiply_model = gains_multiply_model
