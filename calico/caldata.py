@@ -114,6 +114,9 @@ class CalData:
         calibration.
     ddcal_source_offset_taper_deg : float or None
         Taper on the source drift regularization for direction-dependent calibration.
+    cartesian_optimization : bool
+        If True, optimize the real and imaginary components of the gains. If False,
+        optimize the amplitude and complex phase of the gains.
     parallel : bool
         If True, calibration is parallelized.
     n_workers : int
@@ -160,6 +163,7 @@ class CalData:
         self.crosspol_phase_strategy = None
         self.ddcal_max_source_offset_deg = None
         self.ddcal_source_offset_taper_deg = None
+        self.cartesian_optimization = None
         self.parallel = None
         self.n_workers = None
         self.verbose = None
@@ -218,7 +222,9 @@ class CalData:
         self.gains = use_gains[cal_ant_inds, :, :]
 
         if self.n_directions > 1:
-            self.gains = np.repeat(self.gains[:, :, :, np.newaxis], self.n_directions, axis=3)
+            self.gains = np.repeat(
+                self.gains[:, :, :, np.newaxis], self.n_directions, axis=3
+            )
 
     def initialize_gains(
         self,
@@ -389,6 +395,7 @@ class CalData:
         crosspol_phase_strategy: str | None = None,
         ddcal_max_source_offset_deg: float | None = None,
         ddcal_source_offset_taper_deg: float | None = None,
+        cartesian_optimization: bool | None = None,
         verbose: bool = False,
         parallel: bool = False,
         n_workers: int = 20,
@@ -864,6 +871,10 @@ class CalData:
         self.ddcal_source_offset_taper_deg = ddcal_source_offset_taper_deg
         self.get_crosspol_phase = get_crosspol_phase
         self.crosspol_phase_strategy = crosspol_phase_strategy
+        if cartesian_optimization is None:
+            self.cartesian_optimization = True
+        else:
+            self.cartesian_optimization = cartesian_optimization
 
         # Optimizer options
         self.xtol = xtol
@@ -1137,6 +1148,10 @@ class CalData:
             )
         if self.Nfreqs < 1:
             raise ValueError(f"self.Nfreqs must be positive, got {self.Nfreqs}.")
+        if not self.cartesian_optimization:
+            raise ValueError(
+                f"sky_based_calibration supports Cartesian optimization only, but cartesian_optimization is {self.cartesian_optimization}."
+            )
 
         if np.max(self.visibility_weights) == 0.0:
             warnings.warn(
@@ -1233,6 +1248,10 @@ class CalData:
         if self.gains_multiply_model:
             raise ValueError(
                 "gains_multiply_model is True. Delay-weighted calibration requires that gains_multiply_model=False."
+            )
+        if not self.cartesian_optimization:
+            raise ValueError(
+                f"sky_based_calibration supports Cartesian optimization only, but cartesian_optimization is {self.cartesian_optimization}."
             )
         if self.parallel:
             warnings.warn(

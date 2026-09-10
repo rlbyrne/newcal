@@ -598,17 +598,15 @@ def cost_ddcal(
         # )
         # cost += 10000 * phase_drift_penalty
 
-        path_length_difference_rad_taper_end = (
+        path_length_difference_rad_taper_start = (
             2
             * jnp.pi
             * antenna_distances[:, jnp.newaxis]
             * freq_array[jnp.newaxis, :]
             / c
-        ) * jnp.sin(
-            jnp.deg2rad(ddcal_max_source_offset_deg + ddcal_source_offset_taper_deg)
-        )
-        keep_inds = np.where(path_length_difference_rad_taper_end < np.pi)
-        path_length_difference_rad_taper_start = (
+        ) * jnp.sin(jnp.deg2rad(ddcal_max_source_offset_deg))
+        keep_inds = np.where(path_length_difference_rad_taper_start < np.pi)
+        path_length_difference_rad_taper_end = (
             (
                 2
                 * jnp.pi
@@ -616,11 +614,13 @@ def cost_ddcal(
                 * freq_array[jnp.newaxis, :]
                 / c
             )
-            * jnp.sin(jnp.deg2rad(ddcal_max_source_offset_deg))
+            * jnp.sin(
+                jnp.deg2rad(ddcal_max_source_offset_deg + ddcal_source_offset_taper_deg)
+            )
         )[keep_inds]
         path_length_difference_rad_taper_width = (
-            path_length_difference_rad_taper_end[keep_inds]
-            - path_length_difference_rad_taper_start
+            path_length_difference_rad_taper_end
+            - path_length_difference_rad_taper_start[keep_inds]
         )
         offset_tukey = utils.tukey_taper(
             jnp.angle(gains[keep_inds]),
@@ -629,7 +629,6 @@ def cost_ddcal(
         )
         cost -= jnp.sum(jnp.log(offset_tukey))
 
-    # print(cost)
     return cost
 
 

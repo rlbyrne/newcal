@@ -969,8 +969,6 @@ def run_ddcal_optimization(
         Fit gain values. Shape (Nants, n_directions,).
     """
 
-    caldata_obj.cartesian_optimization = False
-
     gains_fit = np.full(
         (caldata_obj.Nants, caldata_obj.n_directions),
         np.nan + 1j * np.nan,
