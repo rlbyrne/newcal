@@ -309,7 +309,13 @@ def cost_ddcal_wrapper(
     gains_reshaped = jnp.reshape(
         gains_flattened, (len(ant_inds), caldata_obj.n_directions, 2)
     )
-    gains_reshaped = gains_reshaped[:, :, 0] + 1.0j * gains_reshaped[:, :, 1]
+    if caldata_obj.cartesian_optimization:
+        gains_reshaped = gains_reshaped[:, :, 0] + 1.0j * gains_reshaped[:, :, 1]
+    else:
+        gains_reshaped = gains_reshaped[:, :, 0] * jnp.exp(
+            2 * jnp.pi * 1j * gains_reshaped[:, :, 1]
+        )
+
     gains = jnp.ones((caldata_obj.Nants, caldata_obj.n_directions), dtype=complex)
     gains = gains.at[jnp.ix_(ant_inds, jnp.arange(caldata_obj.n_directions))].set(
         gains_reshaped
@@ -963,6 +969,8 @@ def run_ddcal_optimization(
         Fit gain values. Shape (Nants, n_directions,).
     """
 
+    caldata_obj.cartesian_optimization = False
+
     gains_fit = np.full(
         (caldata_obj.Nants, caldata_obj.n_directions),
         np.nan + 1j * np.nan,
@@ -998,20 +1006,21 @@ def run_ddcal_optimization(
     ant_inds = np.where(weight_per_ant > 0.0)[0]
 
     if caldata_obj.n_directions == 1:
+        gains_init = caldata_obj.gains[ant_inds, freq_ind, pol_ind, np.newaxis]
+    else:
+        gains_init = caldata_obj.gains[ant_inds, freq_ind, pol_ind, :]
+
+    if caldata_obj.cartesian_optimization:
         gains_init_flattened = np.stack(
             (
-                np.real(caldata_obj.gains[ant_inds, freq_ind, pol_ind, np.newaxis]),
-                np.imag(caldata_obj.gains[ant_inds, freq_ind, pol_ind, np.newaxis]),
+                np.real(gains_init),
+                np.imag(gains_init),
             ),
             axis=2,
         ).flatten()
     else:
         gains_init_flattened = np.stack(
-            (
-                np.real(caldata_obj.gains[ant_inds, freq_ind, pol_ind, :]),
-                np.imag(caldata_obj.gains[ant_inds, freq_ind, pol_ind, :]),
-            ),
-            axis=2,
+            (np.abs(gains_init), np.angle(gains_init)), axis=2
         ).flatten()
 
     # Minimize the cost function
@@ -1039,9 +1048,15 @@ def run_ddcal_optimization(
     gains_fit_single_pol = np.reshape(
         result.x, (len(ant_inds), caldata_obj.n_directions, 2)
     )
-    gains_fit[ant_inds, :] = (
-        gains_fit_single_pol[:, :, 0] + 1j * gains_fit_single_pol[:, :, 1]
-    )
+
+    if caldata_obj.cartesian_optimization:
+        gains_fit[ant_inds, :] = (
+            gains_fit_single_pol[:, :, 0] + 1j * gains_fit_single_pol[:, :, 1]
+        )
+    else:
+        gains_fit[ant_inds, :] = gains_fit_single_pol[:, :, 0] * np.exp(
+            2 * np.pi * 1j * gains_fit_single_pol[:, :, 1]
+        )
 
     # Ensure that the phase of the gains is mean-zero
     # If lambda_val != 0, this should be handled by the phase regularization term, but

@@ -586,22 +586,32 @@ def cost_ddcal(
         cost += regularization_term
 
     if ddcal_max_source_offset_deg is not None:
-        ant_dist_wls = (
+        max_path_length_difference_wl = (
             antenna_distances[:, jnp.newaxis] * freq_array[jnp.newaxis, :] / c
+        ) * np.sin(np.deg2rad(ddcal_max_source_offset_deg))
+        measured_path_length = jnp.angle(gains) / (2 * jnp.pi)
+        phase_drift_penalty = jnp.sum(
+            (
+                (measured_path_length[:, jnp.newaxis]) ** 2
+                / (2 * (3 * max_path_length_difference_wl) ** 2)
+            )[jnp.where(max_path_length_difference_wl < 0.5)]
         )
-        angle_offset = jnp.abs(
-            jnp.arcsin(
-                jnp.angle(gains)
-                / (2 * jnp.pi * ant_dist_wls[:, :, jnp.newaxis, jnp.newaxis])
-            )
-        )
-        offset_tukey = utils.tukey_taper(
-            angle_offset,
-            jnp.deg2rad(ddcal_max_source_offset_deg),
-            jnp.deg2rad(ddcal_source_offset_taper_deg),
-        )
-        cost -= jnp.log(jnp.prod(offset_tukey))
+        cost += 10000 * phase_drift_penalty
 
+        # angle_offset = jnp.abs(
+        #    jnp.arcsin(
+        #        jnp.angle(gains)
+        #        / (2 * jnp.pi * ant_dist_wls[:, :, jnp.newaxis, jnp.newaxis])
+        #    )
+        # )
+        # offset_tukey = utils.tukey_taper(
+        #    angle_offset,
+        #    jnp.deg2rad(ddcal_max_source_offset_deg),
+        #    jnp.deg2rad(ddcal_source_offset_taper_deg),
+        # )
+        # cost -= jnp.sum(jnp.log(offset_tukey))
+
+    #print(cost)
     return cost
 
 

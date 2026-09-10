@@ -271,6 +271,7 @@ def peeling_wrapper(
     model_list: list[str] | list[UVData],
     data_use_column: str = "DATA",
     model_use_column: str = "MODEL_DATA",
+    check_vis_ordering: bool = True,
     gain_init_calfile: str | None = None,
     gain_init_to_vis_ratio: bool = True,
     gain_init_stddev: float = 0.0,
@@ -308,6 +309,9 @@ def peeling_wrapper(
     model_use_column : str, default="MODEL_DATA"
         Column in an ms file to use for the model visibilities. Used only if
         the elements of model_list point to ms files.
+    check_vis_ordering : bool
+        Default True. If False, the ordering of the data and model visibilities are
+        assumed to be identical. This can cause errors if used incorrectly.
     gain_init_calfile : str, optional, default=None
         If not None, provides a path to a pyuvdata-formatted calfits file
         containing gains values for calibration initialization.
