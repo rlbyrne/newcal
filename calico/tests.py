@@ -2035,8 +2035,8 @@ class TestStringMethods(unittest.TestCase):
             gain_init_stddev=0.1,
             lambda_val=0,
             gains_multiply_model=True,
-            ddcal_max_source_offset_deg=1,
-            ddcal_source_offset_taper_deg=0.1,
+            ddcal_max_source_offset_deg=0.1,
+            ddcal_source_offset_taper_deg=0.01,
             xtol=1e-7,
             verbose=False,
         )

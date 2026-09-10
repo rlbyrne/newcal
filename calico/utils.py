@@ -70,7 +70,7 @@ def tukey_taper(x, taper_start, taper_width):
     ----------
     x : array of float
     taper_start :  float
-        Value correponding to the center of the taper.
+        Value correponding to the start of the taper.
     taper_width : float
         Width of the taper.
 
