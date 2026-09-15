@@ -387,9 +387,13 @@ class CalData:
     def ddcal_regularization_setup(self) -> None:
         """
         Function to assemble the quantities needed for direction-dependent regularization.
-        The regularization prevents peeled sources to drift too far from their expected
+        The regularization prevents peeled sources from drifting too far from their expected
         position. The function populates ddcal_max_phase_offset_rad, ddcal_phase_offset_taper_rad,
-        and ddcal_ant_inds_regularized.
+        and ddcal_ant_inds_regularized. It converts from ddcal_max_source_offset_deg and
+        ddcal_source_offset_taper_deg, which are allowable source position drifts, to the equivalent
+        allowable phase drift for each per-antenna and per-frequency gain. Gains with allowable phase
+        drifts greater than pi are not regularized, because the source drift constraint provides no
+        constraint on the phase of those gains.
         """
 
         c = 3e8
