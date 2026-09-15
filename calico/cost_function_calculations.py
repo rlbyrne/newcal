@@ -513,11 +513,9 @@ def cost_ddcal(
     ant1_inds: NDArray[np.integer],
     ant2_inds: NDArray[np.integer],
     lambda_val: float,
-    ddcal_max_source_offset_deg: float | None = None,
-    ddcal_source_offset_taper_deg: float | None = None,
-    antenna_distances: NDArray[np.floating] | None = None,
-    freq_array: NDArray[np.floating] | None = None,
-    c=3e8,
+    ddcal_max_phase_offset_rad: NDArray[np.floating] | None = None,
+    ddcal_phase_offset_taper_rad: NDArray[np.floating] | None = None,
+    ddcal_regularized_ant_inds: NDArray[np.integer] | None = None,
 ) -> float:
     """
     Calculate the cost function (chi-squared) value.
@@ -544,19 +542,13 @@ def cost_ddcal(
         Shape (Nbls,).
     lambda_val : float
         Weight of the phase regularization term; must be positive or zero.
-    ddcal_max_source_offset_deg : float or None
-        Source direction regularization term; defines the distance sources can drift in degrees.
-        If None, no direction regularization is applied.
-    ddcal_source_offset_taper_deg : float or None
-        Defines the width of the Tukey taper for the source drift regularization. Used only if
-        ddcal_max_source_offset_deg is not None.
-    antenna_distances : array of float or None
-        Shape (Nants,). Used only if ddcal_max_source_offset_deg is not None. Antenna distance from the
-        array center, in units of meters.
-    freq_array : array of float of None
-        Shape (Nfreqs,). Used only if ddcal_max_source_offset_deg is not None. Frequencies in Hz.
-    c : float
-        Speed of light in m/s, default 3e8. Used only if ddcal_max_source_offset_deg is not None.
+    ddcal_max_phase_offset_rad : list or None
+        Source direction regularization term; defines the angle by which the gains can vary.
+        If None, no direction regularization is applied. Length Nfreqs.
+    ddcal_phase_offset_taper_rad : list or None
+        Taper on the source direction regularizaton term. Length Nfreqs.
+    ddcal_regularized_ant_inds : list or None
+        Indices of the antenna-frequency pairs that are regularized. Length Nfreqs.
 
     Returns
     -------
@@ -585,49 +577,14 @@ def cost_ddcal(
         regularization_term = lambda_val * jnp.sum(jnp.angle(gains)) ** 2.0
         cost += regularization_term
 
-    if ddcal_max_source_offset_deg is not None:
-        # max_path_length_difference_wl = (
-        #    antenna_distances[:, jnp.newaxis] * freq_array[jnp.newaxis, :] / c
-        # ) * np.sin(np.deg2rad(ddcal_max_source_offset_deg))
-        # measured_path_length = jnp.angle(gains) / (2 * jnp.pi)
-        # phase_drift_penalty = jnp.sum(
-        #    (
-        #        (measured_path_length[:, jnp.newaxis]) ** 2
-        #        / (2 * (3 * max_path_length_difference_wl) ** 2)
-        #    )[jnp.where(max_path_length_difference_wl < 0.5)]
-        # )
-        # cost += 10000 * phase_drift_penalty
-
-        path_length_difference_rad_taper_start = (
-            2
-            * jnp.pi
-            * antenna_distances[:, jnp.newaxis]
-            * freq_array[jnp.newaxis, :]
-            / c
-        ) * jnp.sin(jnp.deg2rad(ddcal_max_source_offset_deg))
-        keep_inds = np.where(path_length_difference_rad_taper_start < np.pi)
-        path_length_difference_rad_taper_end = (
-            (
-                2
-                * jnp.pi
-                * antenna_distances[:, jnp.newaxis]
-                * freq_array[jnp.newaxis, :]
-                / c
+    if ddcal_max_phase_offset_rad is not None:
+        for freq_ind in range(len(ddcal_max_phase_offset_rad)):
+            offset_tukey = utils.tukey_taper(
+                jnp.angle(gains[ddcal_regularized_ant_inds[freq_ind], freq_ind, :, :]),
+                ddcal_max_phase_offset_rad[freq_ind][:, jnp.newaxis, jnp.newaxis],
+                ddcal_phase_offset_taper_rad[freq_ind][:, jnp.newaxis, jnp.newaxis],
             )
-            * jnp.sin(
-                jnp.deg2rad(ddcal_max_source_offset_deg + ddcal_source_offset_taper_deg)
-            )
-        )[keep_inds]
-        path_length_difference_rad_taper_width = (
-            path_length_difference_rad_taper_end
-            - path_length_difference_rad_taper_start[keep_inds]
-        )
-        offset_tukey = utils.tukey_taper(
-            jnp.angle(gains[keep_inds]),
-            path_length_difference_rad_taper_start[:, jnp.newaxis, jnp.newaxis],
-            path_length_difference_rad_taper_width[:, jnp.newaxis, jnp.newaxis],
-        )
-        cost -= jnp.sum(jnp.log(offset_tukey))
+            cost -= jnp.sum(jnp.log(offset_tukey))
 
     return cost
 

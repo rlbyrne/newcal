@@ -102,6 +102,21 @@ class TestStringMethods(unittest.TestCase):
             data, model, gain_init_calfile=f"{THIS_DIR}/data/test_data_3freqs.calfits"
         )
 
+    def test_split_caldata_obj(self):
+
+        test_freq_ind = 0
+        test_pol_ind = 0
+
+        model = pyuvdata.UVData()
+        model.read(f"{THIS_DIR}/data/test_model_1freq.uvfits")
+        data = model.copy()
+
+        caldata_obj = caldata.CalData()
+        caldata_obj.load_data(data, model)
+        caldata_subset = caldata_obj.get_caldata_subset(test_freq_ind, None)
+        caldata_subset = caldata_obj.get_caldata_subset(None, test_pol_ind)
+        caldata_subset = caldata_obj.get_caldata_subset(test_freq_ind, test_pol_ind)
+
     def test_cost_skycal_with_identical_data(self):
 
         test_freq_ind = 0

@@ -114,6 +114,15 @@ class CalData:
         calibration.
     ddcal_source_offset_taper_deg : float or None
         Taper on the source drift regularization for direction-dependent calibration.
+    ddcal_max_phase_offset_rad : list or None
+        Allowable phase that a gain is allowed to drift in direction-dependent calibration.
+        Length Nfreqs. Each element is an array of float with length N_ants_regularized.
+    ddcal_phase_offset_taper_rad : list or None
+        Taper on the gain drift regularization in direction-dependent calibration.
+        Length Nfreqs. Each element is an array of float with length N_ants_regularized.
+    ddcal_ant_inds_regularized : list or None
+        Indices of regularized antennas for direction-dependent calibration.
+        Length Nfreqs. Each element is an array of int with length N_ants_regularized.
     cartesian_optimization : bool
         If True, optimize the real and imaginary components of the gains. If False,
         optimize the amplitude and complex phase of the gains.
@@ -163,6 +172,9 @@ class CalData:
         self.crosspol_phase_strategy = None
         self.ddcal_max_source_offset_deg = None
         self.ddcal_source_offset_taper_deg = None
+        self.ddcal_max_phase_offset_rad = None
+        self.ddcal_phase_offset_taper_rad = None
+        self.ddcal_ant_inds_regularized = None
         self.cartesian_optimization = None
         self.parallel = None
         self.n_workers = None
@@ -370,6 +382,49 @@ class CalData:
                 0.0,
                 gain_init_stddev,
                 size=np.shape(self.gains),
+            )
+
+    def ddcal_regularization_setup(self) -> None:
+        """
+        Function to assemble the quantities needed for direction-dependent regularization.
+        The regularization prevents peeled sources to drift too far from their expected
+        position. The function populates ddcal_max_phase_offset_rad, ddcal_phase_offset_taper_rad,
+        and ddcal_ant_inds_regularized.
+        """
+
+        c = 3e8
+        antenna_distances_rad = (
+            2
+            * np.pi
+            * self.antenna_distances[:, np.newaxis]
+            * self.freq_array[np.newaxis, :]
+            / c
+        )
+        ddcal_max_phase_offset_rad_all = antenna_distances_rad * np.sin(
+            np.deg2rad(self.ddcal_max_source_offset_deg)
+        )
+        ddcal_phase_offset_taper_end_rad_all = antenna_distances_rad * np.sin(
+            np.deg2rad(
+                self.ddcal_max_source_offset_deg + self.ddcal_source_offset_taper_deg
+            )
+        )
+        ddcal_phase_offset_taper_rad_all = (
+            ddcal_phase_offset_taper_end_rad_all - ddcal_max_phase_offset_rad_all
+        )
+
+        self.ddcal_max_phase_offset_rad = []
+        self.ddcal_phase_offset_taper_rad = []
+        self.ddcal_ant_inds_regularized = []
+        for freq_ind in range(self.Nfreqs):
+            use_ant_inds = np.where(
+                ddcal_max_phase_offset_rad_all[:, freq_ind] < np.pi
+            )[0]
+            self.ddcal_ant_inds_regularized.append(use_ant_inds)
+            self.ddcal_max_phase_offset_rad.append(
+                ddcal_max_phase_offset_rad_all[use_ant_inds, freq_ind]
+            )
+            self.ddcal_phase_offset_taper_rad.append(
+                ddcal_phase_offset_taper_rad_all[use_ant_inds, freq_ind]
             )
 
     def load_data(
@@ -869,6 +924,8 @@ class CalData:
         self.lambda_val = lambda_val
         self.ddcal_max_source_offset_deg = ddcal_max_source_offset_deg
         self.ddcal_source_offset_taper_deg = ddcal_source_offset_taper_deg
+        if self.ddcal_max_source_offset_deg is not None:
+            self.ddcal_regularization_setup()
         self.get_crosspol_phase = get_crosspol_phase
         self.crosspol_phase_strategy = crosspol_phase_strategy
         if cartesian_optimization is None:
@@ -962,6 +1019,16 @@ class CalData:
         caldata_subset.ddcal_source_offset_taper_deg = (
             self.ddcal_source_offset_taper_deg
         )
+        if self.ddcal_max_phase_offset_rad is not None:
+            caldata_subset.ddcal_max_phase_offset_rad = self.ddcal_max_phase_offset_rad[
+                freq_slice
+            ]
+            caldata_subset.ddcal_phase_offset_taper_rad = (
+                self.ddcal_phase_offset_taper_rad[freq_slice]
+            )
+            caldata_subset.ddcal_ant_inds_regularized = self.ddcal_ant_inds_regularized[
+                freq_slice
+            ]
         caldata_subset.verbose = self.verbose
         caldata_subset.parallel = self.parallel
         caldata_subset.n_workers = self.n_workers
@@ -1247,11 +1314,11 @@ class CalData:
 
         if self.gains_multiply_model:
             raise ValueError(
-                "gains_multiply_model is True. Delay-weighted calibration requires that gains_multiply_model=False."
+                "gains_multiply_model is True. delay_weighted_calibration requires that gains_multiply_model=False."
             )
         if not self.cartesian_optimization:
             raise ValueError(
-                f"sky_based_calibration supports Cartesian optimization only, but cartesian_optimization is {self.cartesian_optimization}."
+                f"delay_weighted_calibration supports Cartesian optimization only, but cartesian_optimization is {self.cartesian_optimization}."
             )
         if self.parallel:
             warnings.warn(
